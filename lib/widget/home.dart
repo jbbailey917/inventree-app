@@ -27,6 +27,9 @@ import "package:inventree/widget/refreshable_state.dart";
 import "package:inventree/widget/snacks.dart";
 import "package:inventree/widget/spinner.dart";
 import "package:inventree/widget/company/company_list.dart";
+import "package:inventree/widget/bulk_scan/bulk_receive_page.dart";
+import "package:inventree/widget/bulk_scan/bulk_scan_page.dart";
+import "package:inventree/widget/skids/skids_page.dart";
 
 class InvenTreeHomePage extends StatefulWidget {
   const InvenTreeHomePage({Key? key}) : super(key: key);
@@ -63,6 +66,7 @@ class _InvenTreeHomePageState extends State<InvenTreeHomePage>
   bool homeShowManufacturers = false;
   bool homeShowCustomers = false;
   bool homeShowSuppliers = false;
+  bool homeShowBulkScan = true;
 
   // Selected user profile
   UserProfile? _profile;
@@ -173,6 +177,22 @@ class _InvenTreeHomePageState extends State<InvenTreeHomePage>
     );
   }
 
+  void _showBulkReceive(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BulkReceivePage()),
+    );
+  }
+
+  void _showBulkScan(BuildContext context) {
+    if (!InvenTreeAPI().checkConnection()) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BulkScanPage()),
+    );
+  }
+
   void _selectProfile() {
     Navigator.push(
       context,
@@ -216,6 +236,10 @@ class _InvenTreeHomePageState extends State<InvenTreeHomePage>
             as bool;
     homeShowSuppliers =
         await InvenTreeSettingsManager().getValue(INV_HOME_SHOW_SUPPLIERS, true)
+            as bool;
+
+    homeShowBulkScan =
+        await InvenTreeSettingsManager().getValue(INV_HOME_SHOW_BULK_SCAN, true)
             as bool;
 
     setState(() {});
@@ -331,6 +355,51 @@ class _InvenTreeHomePageState extends State<InvenTreeHomePage>
           TablerIcons.package,
           callback: () {
             _showStock(context);
+          },
+        ),
+      );
+    }
+
+    // Bulk Receive
+    if (homeShowBulkScan && InvenTreeStockItem().canView) {
+      tiles.add(
+        _listTile(
+          context,
+          "Bulk Receive",
+          TablerIcons.package_import,
+          callback: () {
+            _showBulkReceive(context);
+          },
+        ),
+      );
+    }
+
+    // Skids
+    if (homeShowBulkScan && InvenTreeStockItem().canView) {
+      tiles.add(
+        _listTile(
+          context,
+          "Skids",
+          TablerIcons.packages,
+          callback: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SkidsPage()),
+            );
+          },
+        ),
+      );
+    }
+
+    // Bulk Scan
+    if (homeShowBulkScan && InvenTreeStockItem().canView) {
+      tiles.add(
+        _listTile(
+          context,
+          L10().bulkScan,
+          TablerIcons.qrcode,
+          callback: () {
+            _showBulkScan(context);
           },
         ),
       );

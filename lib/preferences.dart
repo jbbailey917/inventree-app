@@ -16,6 +16,8 @@ const String INV_HOME_SHOW_MANUFACTURERS = "homeShowManufacturers";
 const String INV_HOME_SHOW_CUSTOMERS = "homeShowCustomers";
 const String INV_HOME_SHOW_SUPPLIERS = "homeShowSuppliers";
 
+const String INV_HOME_SHOW_BULK_SCAN = "homeShowBulkScan";
+
 const String INV_SCREEN_ORIENTATION = "appScreenOrientation";
 
 // Available screen orientation values

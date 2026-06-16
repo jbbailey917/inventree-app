@@ -1921,5 +1921,134 @@
   "@currency": {},
 
   "priceBreaks": "Price Breaks",
-  "@priceBreaks": {}
+  "@priceBreaks": {},
+
+  "bulkScan": "Bulk Scan",
+  "@bulkScan": {},
+
+  "bulkScanTitle": "Bulk Barcode Scan",
+  "@bulkScanTitle": {},
+
+  "bulkScanOverlay": "Bulk Scan — Scan a barcode",
+  "@bulkScanOverlay": {},
+
+  "bulkScanNoItems": "No items scanned yet",
+  "@bulkScanNoItems": {},
+
+  "bulkScanNoItemsHint": "Scan a barcode or type a search term and tap Add",
+  "@bulkScanNoItemsHint": {},
+
+  "bulkScanMoveStock": "Move Stock",
+  "@bulkScanMoveStock": {},
+
+  "bulkScanReceiveStock": "Receive Stock",
+  "@bulkScanReceiveStock": {},
+
+  "bulkScanReconcileStock": "Reconcile Stock",
+  "@bulkScanReconcileStock": {},
+
+  "bulkScanPricing": "Pricing Dashboard",
+  "@bulkScanPricing": {},
+
+  "bulkScanClearAll": "Clear All",
+  "@bulkScanClearAll": {},
+
+  "bulkScanDeselectAll": "Deselect All",
+  "@bulkScanDeselectAll": {},
+
+  "bulkScanDuplicate": "Duplicate — already in list",
+  "@bulkScanDuplicate": {},
+
+  "bulkScanAdded": "Added",
+  "@bulkScanAdded": {},
+
+  "bulkScanSelectItems": "Select items to perform actions",
+  "@bulkScanSelectItems": {},
+
+  "bulkScanSourceLocation": "Source Location (filter)",
+  "@bulkScanSourceLocation": {},
+
+  "bulkScanDestLocation": "Destination Location",
+  "@bulkScanDestLocation": {},
+
+  "bulkScanSelectDestLocation": "Select destination location...",
+  "@bulkScanSelectDestLocation": {},
+
+  "bulkScanPackagesToMove": "Packages to Move",
+  "@bulkScanPackagesToMove": {},
+
+  "bulkScanUnitsToMove": "Units to Move",
+  "@bulkScanUnitsToMove": {},
+
+  "bulkScanAvailablePackages": "Available Packages",
+  "@bulkScanAvailablePackages": {},
+
+  "bulkScanAvailableUnits": "Available Loose Units",
+  "@bulkScanAvailableUnits": {},
+
+  "bulkScanMoveSuccess": "Stock moved successfully",
+  "@bulkScanMoveSuccess": {},
+
+  "bulkScanMoveFailed": "Move failed",
+  "@bulkScanMoveFailed": {},
+
+  "bulkScanQuantity": "Quantity",
+  "@bulkScanQuantity": {},
+
+  "bulkScanQuantityToReceive": "Quantity to Receive",
+  "@bulkScanQuantityToReceive": {},
+
+  "bulkScanReceiveWithoutPo": "Receive without PO (add directly to stock)",
+  "@bulkScanReceiveWithoutPo": {},
+
+  "bulkScanSelectPo": "Select a purchase order...",
+  "@bulkScanSelectPo": {},
+
+  "bulkScanReceiveSuccess": "Stock received successfully",
+  "@bulkScanReceiveSuccess": {},
+
+  "bulkScanReceiveFailed": "Receive failed",
+  "@bulkScanReceiveFailed": {},
+
+  "bulkScanSystemCount": "System Count",
+  "@bulkScanSystemCount": {},
+
+  "bulkScanPhysicalCount": "Physical Count",
+  "@bulkScanPhysicalCount": {},
+
+  "bulkScanVariance": "Variance",
+  "@bulkScanVariance": {},
+
+  "bulkScanNoVariance": "No variance — stock counts match",
+  "@bulkScanNoVariance": {},
+
+  "bulkScanReconcileSuccess": "Reconciliation complete",
+  "@bulkScanReconcileSuccess": {},
+
+  "bulkScanReconcileFailed": "Reconciliation failed",
+  "@bulkScanReconcileFailed": {},
+
+  "bulkScanReconcileToDifferent": "Reconcile to a different location",
+  "@bulkScanReconcileToDifferent": {},
+
+  "bulkScanPackages": "Packages",
+  "@bulkScanPackages": {},
+
+  "bulkScanLooseUnits": "Loose units",
+  "@bulkScanLooseUnits": {},
+
+  "bulkScanSelectedParts": "Selected Parts",
+  "@bulkScanSelectedParts": {},
+
+  "bulkScanAllLocations": "All locations",
+  "@bulkScanAllLocations": {},
+
+  "bulkScanLoading": "Loading...",
+  "@bulkScanLoading": {},
+
+  "bulkScanDestLocationRequired": "Select a destination location",
+  "@bulkScanDestLocationRequired": {},
+
+  "bulkScanRemoveConfirm": "Remove all scanned items?",
+  "@bulkScanRemoveConfirm": {}
 }
