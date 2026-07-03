@@ -21,8 +21,11 @@ class BulkScanMovePage extends StatefulWidget {
 }
 
 class BulkScanMovePageState extends State<BulkScanMovePage> {
+  static const String _defaultLocationName = "Where-House";
+
   bool _loading = true;
   bool _submitting = false;
+  String _submitProgress = "";
 
   // Stock items fetched from the server
   List<Map<String, dynamic>> _allStockItems = [];
@@ -34,6 +37,8 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
   List<_StockGroup> _stockGroups = [];
   // Move state: groupKey -> {packages, units}
   final Map<String, _MoveQty> _moveState = {};
+  // Part PKs that have zero stock in the default source location
+  final Set<int> _partsWithNoStockHere = {};
 
   int? _sourceLocationPk;
   int? _destLocationPk;
@@ -65,21 +70,29 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
       // Load all locations
       await _loadLocations();
 
+      // Default source location to Where-House
+      _resolveDefaultSourceLocation();
+
       // Load stock for each part
       final allItems = <Map<String, dynamic>>[];
       for (final partId in _partIds) {
-        final items = await _fetchAllPages(
-          "stock/",
-          {"part": "$partId", "in_stock": "true", "part_detail": "true",
-           "location_detail": "true"},
-        );
-        allItems.addAll(items);
+        try {
+          final items = await _fetchAllPages(
+            "stock/",
+            {"part": "$partId", "in_stock": "true", "part_detail": "true",
+             "location_detail": "true"},
+          );
+          allItems.addAll(items);
+        } catch (e) {
+          debug("Failed to fetch stock for part $partId: $e");
+        }
       }
 
       _allStockItems = allItems;
-      _computePackageSizes();
+      await _loadSupplierPackSizes();
       _buildStockGroups();
       _initMoveState();
+      _findPartsWithNoStockHere();
     } catch (e) {
       if (mounted) {
         showSnackIcon("Failed to load stock: $e", success: false);
@@ -87,6 +100,34 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
     }
 
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Set [_sourceLocationPk] to the default location if it exists.
+  void _resolveDefaultSourceLocation() {
+    final defaultLoc = _locations.where((loc) {
+      final name = (loc["name"] ?? "").toString();
+      return name.toLowerCase().trim() == _defaultLocationName.toLowerCase();
+    }).firstOrNull;
+    _sourceLocationPk = defaultLoc?["pk"] as int?;
+  }
+
+  /// Find parts that have zero stock in the currently selected source location.
+  void _findPartsWithNoStockHere() {
+    _partsWithNoStockHere.clear();
+    if (_sourceLocationPk == null) return;
+
+    final partIdsWithStock = <int>{};
+    for (final g in _stockGroups) {
+      if (g.locationPk == _sourceLocationPk) {
+        partIdsWithStock.add(g.partPk);
+      }
+    }
+
+    for (final partId in _partIds) {
+      if (!partIdsWithStock.contains(partId)) {
+        _partsWithNoStockHere.add(partId);
+      }
+    }
   }
 
   Future<void> _loadLocations() async {
@@ -99,7 +140,8 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
     Map<String, String> params,
   ) async {
     final all = <Map<String, dynamic>>[];
-    String? nextUrl = "$endpoint?${_encodeParams(params)}";
+    final query = _encodeParams(params);
+    String? nextUrl = query.isNotEmpty ? "$endpoint?$query" : endpoint;
 
     while (nextUrl != null) {
       // Remove base URL prefix if present
@@ -107,19 +149,29 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
           ? nextUrl.substring(4)
           : nextUrl;
       final response = await InvenTreeAPI().get(url);
-      if (!response.isValid() || !response.isMap()) break;
+      if (!response.isValid()) break;
 
-      final data = response.asMap();
-      final results = data["results"] as List<dynamic>? ?? [];
-      for (final r in results) {
-        if (r is Map<String, dynamic>) all.add(r);
-      }
+      // Handle both paginated dict {count,results,next} and flat list [] formats
+      if (response.isMap()) {
+        final data = response.asMap();
+        final results = data["results"] as List<dynamic>? ?? [];
+        for (final r in results) {
+          if (r is Map<String, dynamic>) all.add(r);
+        }
 
-      nextUrl = data["next"] as String?;
-      // Handle full URL vs relative
-      if (nextUrl != null && nextUrl.startsWith("http")) {
-        final uri = Uri.parse(nextUrl);
-        nextUrl = uri.path + (uri.query.isNotEmpty ? "?${uri.query}" : "");
+        nextUrl = data["next"] as String?;
+        // Handle full URL vs relative
+        if (nextUrl != null && nextUrl.startsWith("http")) {
+          final uri = Uri.parse(nextUrl);
+          nextUrl = uri.path + (uri.query.isNotEmpty ? "?${uri.query}" : "");
+        }
+      } else if (response.isList()) {
+        for (final r in response.data as List<dynamic>) {
+          if (r is Map<String, dynamic>) all.add(r);
+        }
+        break; // flat list — no pagination
+      } else {
+        break;
       }
     }
 
@@ -132,28 +184,23 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
         .join("&");
   }
 
-  void _computePackageSizes() {
-    final freq = <int, Map<double, int>>{};
-    for (final item in _allStockItems) {
-      final qty = (item["quantity"] as num?)?.toDouble() ?? 0;
-      if (qty <= 1) continue;
-      final part = (item["part"] ?? item["part_detail"]?["pk"]) as int?;
-      if (part == null) continue;
-      freq.putIfAbsent(part, () => {});
-      freq[part]![qty] = (freq[part]![qty] ?? 0) + 1;
-    }
-
+  Future<void> _loadSupplierPackSizes() async {
     final sizes = <int, int>{};
-    for (final entry in freq.entries) {
-      double bestQty = 0;
-      int bestCount = 0;
-      for (final qe in entry.value.entries) {
-        if (qe.value > bestCount || (qe.value == bestCount && qe.key > bestQty)) {
-          bestCount = qe.value;
-          bestQty = qe.key;
+    for (final partId in _partIds) {
+      try {
+        final res = await InvenTreeAPI().get(
+          "company/part/",
+          params: {"part": "$partId", "ordering": "-pk", "limit": "1"},
+        );
+        if (res.isValid() && res.isMap()) {
+          final results = res.resultsList();
+          if (results.isNotEmpty) {
+            final sp = results.first as Map<String, dynamic>;
+            final pn = (sp["pack_quantity_native"] as num?)?.toDouble() ?? 0;
+            if (pn > 0) sizes[partId] = pn.toInt();
+          }
         }
-      }
-      if (bestQty > 0) sizes[entry.key] = bestQty.toInt();
+      } catch (_) {}
     }
     _packageSizes = sizes;
   }
@@ -195,7 +242,11 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
   void _initMoveState() {
     _moveState.clear();
     for (final g in _stockGroups) {
-      _moveState["${g.partPk}_${g.locationPk}"] = _MoveQty();
+      // Default to moving 1 case (package) when packages are available
+      final defaultPkgs = g.packageCount > 0 ? 1 : 0;
+      _moveState["${g.partPk}_${g.locationPk}"] = _MoveQty(
+        packages: defaultPkgs,
+      );
     }
   }
 
@@ -220,6 +271,13 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
     return total;
   }
 
+  /// Maximum number of stock items to transfer per API request.
+  /// Keeps each request fast enough to avoid timeouts.
+  static const int _transferBatchSize = 5;
+
+  /// Timeout in seconds for each batch transfer request.
+  static const int _transferTimeout = 120;
+
   Future<void> _submit() async {
     if (_destLocationPk == null) {
       showSnackIcon(L10().bulkScanDestLocationRequired, success: false);
@@ -230,8 +288,12 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
       return;
     }
 
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _submitProgress = "";
+    });
 
+    // Build the full transfer items list
     final transferItems = <Map<String, dynamic>>[];
     for (final group in _stockGroups) {
       if (_sourceLocationPk != null && group.locationPk != _sourceLocationPk) continue;
@@ -244,7 +306,7 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
       for (int i = 0; i < group.packageItems.length && pkgsRem > 0; i++) {
         final item = group.packageItems[i];
         transferItems.add({
-          "item": item["pk"],
+          "pk": item["pk"],
           "quantity": (item["quantity"] as num?)?.toDouble() ?? 0,
         });
         pkgsRem--;
@@ -258,7 +320,7 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
         final alloc = (item["allocated"] as num?)?.toDouble() ?? 0;
         final take = (qty - alloc).clamp(0, unitsRem.toDouble()).toInt();
         if (take > 0) {
-          transferItems.add({"item": item["pk"], "quantity": take});
+          transferItems.add({"pk": item["pk"], "quantity": take});
           unitsRem -= take;
         }
       }
@@ -270,7 +332,7 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
         final qty = (item["quantity"] as num?)?.toDouble() ?? 0;
         final take = unitsRem.clamp(0, qty.toInt());
         if (take > 0) {
-          transferItems.add({"item": item["pk"], "quantity": take});
+          transferItems.add({"pk": item["pk"], "quantity": take});
           unitsRem -= take;
         }
       }
@@ -282,26 +344,66 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
       return;
     }
 
-    try {
-      final response = await InvenTreeAPI().post(
-        "stock/transfer/",
-        body: {
-          "items": transferItems,
-          "location": _destLocationPk,
-        },
-      );
+    // Split into batches
+    final batches = <List<Map<String, dynamic>>>[];
+    for (int i = 0; i < transferItems.length; i += _transferBatchSize) {
+      final end = (i + _transferBatchSize).clamp(0, transferItems.length);
+      batches.add(transferItems.sublist(i, end));
+    }
 
-      if (response.isValid() && (response.statusCode == 200 || response.statusCode == 201)) {
+    final totalBatches = batches.length;
+    setState(() {
+      _submitProgress = "Moving batch 1 of $totalBatches...";
+    });
+
+    int succeededItems = 0;
+    int failedItems = 0;
+
+    for (int batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      final batch = batches[batchIdx];
+      setState(() {
+        _submitProgress = "Moving batch ${batchIdx + 1} of $totalBatches "
+            "(${succeededItems + batch.length} of ${transferItems.length} items)...";
+      });
+
+      try {
+        final response = await InvenTreeAPI().post(
+          "stock/transfer/",
+          body: {
+            "items": batch,
+            "location": _destLocationPk,
+          },
+          timeoutSeconds: _transferTimeout,
+        );
+
+        if (response.isValid() && (response.statusCode == 200 || response.statusCode == 201)) {
+          succeededItems += batch.length;
+        } else {
+          failedItems += batch.length;
+          // Continue with remaining batches rather than failing entirely
+        }
+      } catch (e) {
+        failedItems += batch.length;
+        // Continue with remaining batches
+      }
+    }
+
+    if (mounted) {
+      setState(() => _submitting = false);
+
+      if (failedItems == 0) {
         showSnackIcon(L10().bulkScanMoveSuccess, success: true);
-        if (mounted) Navigator.pop(context);
+        Navigator.pop(context);
+      } else if (succeededItems > 0) {
+        showSnackIcon(
+          "Moved $succeededItems items, but $failedItems failed. "
+          "Check stock locations and retry the remaining items.",
+          success: false,
+        );
       } else {
         showSnackIcon(L10().bulkScanMoveFailed, success: false);
       }
-    } catch (e) {
-      showSnackIcon("${L10().bulkScanMoveFailed}: $e", success: false);
     }
-
-    if (mounted) setState(() => _submitting = false);
   }
 
   @override
@@ -327,20 +429,39 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
         actions: [
           TextButton(
             onPressed: _submitting ? null : _submit,
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0x33000000),
+            ),
             child: _submitting
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (_submitProgress.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          _submitProgress,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
                   )
                 : Text(
                     _totalUnitsToMove > 0
                         ? "Move ${_totalUnitsToMove} unit(s)"
                         : L10().bulkScanMoveStock,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
                   ),
           ),
         ],
@@ -356,10 +477,37 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
             ),
             const SizedBox(height: 4),
-            ...(_partIds.map((pk) => Text(
-                  "• ${_partName(pk)}",
-                  style: const TextStyle(fontSize: 14),
-                ))),
+            ...(_partIds.map((pk) {
+              final noStock = _partsWithNoStockHere.contains(pk);
+              return Row(
+                children: [
+                  Text(
+                    "• ${_partName(pk)}",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: noStock ? Colors.amber.shade800 : null,
+                    ),
+                  ),
+                  if (noStock) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: Colors.amber.shade800,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      "No stock in $_defaultLocationName",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade800,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            })),
             const SizedBox(height: 16),
 
             // Source location filter
@@ -383,13 +531,47 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
                     ))),
               ],
               onChanged: (v) {
-                setState(() => _sourceLocationPk = v);
+                setState(() {
+                  _sourceLocationPk = v;
+                  _findPartsWithNoStockHere();
+                });
               },
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
+            // Warning banner when some parts have no stock here
+            if (_sourceLocationPk != null && _partsWithNoStockHere.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  border: Border.all(color: Colors.amber.shade200),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 18,
+                        color: Colors.amber.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "${_partsWithNoStockHere.length} of ${_partIds.length} "
+                        "part${_partIds.length != 1 ? 's' : ''} "
+                        "${_partsWithNoStockHere.length != 1 ? 'have' : 'has'} "
+                        "no stock in $_defaultLocationName.",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Stock table
@@ -449,19 +631,19 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
                                       vertical: 4,
                                     ),
                                   ),
-                                  controller: TextEditingController(
-                                    text: move.packages > 0
-                                        ? "${move.packages}"
-                                        : "",
-                                  ),
+                                  controller: move.casesCtrl,
                                   onChanged: (v) {
                                     final val = int.tryParse(v) ?? 0;
-                                    setState(() {
-                                      _moveState[key] = _MoveQty(
-                                        packages: val.clamp(0, maxPkgs),
-                                        units: move.units,
-                                      );
-                                    });
+                                    move.packages = val.clamp(0, maxPkgs);
+                                    _moveState[key] = move;
+                                    if (move.packages > 0) {
+                                      if (move.casesCtrl.text != "${move.packages}") {
+                                        move.casesCtrl.text = "${move.packages}";
+                                        move.casesCtrl.selection = TextSelection.fromPosition(
+                                            TextPosition(offset: move.casesCtrl.text.length));
+                                      }
+                                    }
+                                    setState(() {});
                                   },
                                 ),
                               )
@@ -480,19 +662,19 @@ class BulkScanMovePageState extends State<BulkScanMovePage> {
                                       vertical: 4,
                                     ),
                                   ),
-                                  controller: TextEditingController(
-                                    text: move.units > 0
-                                        ? "${move.units}"
-                                        : "",
-                                  ),
+                                  controller: move.unitsCtrl,
                                   onChanged: (v) {
                                     final val = int.tryParse(v) ?? 0;
-                                    setState(() {
-                                      _moveState[key] = _MoveQty(
-                                        packages: move.packages,
-                                        units: val.clamp(0, maxUnits),
-                                      );
-                                    });
+                                    move.units = val.clamp(0, maxUnits);
+                                    _moveState[key] = move;
+                                    if (move.units > 0) {
+                                      if (move.unitsCtrl.text != "${move.units}") {
+                                        move.unitsCtrl.text = "${move.units}";
+                                        move.unitsCtrl.selection = TextSelection.fromPosition(
+                                            TextPosition(offset: move.unitsCtrl.text.length));
+                                      }
+                                    }
+                                    setState(() {});
                                   },
                                 ),
                               )
@@ -568,7 +750,12 @@ class _StockGroup {
 }
 
 class _MoveQty {
-  _MoveQty({this.packages = 0, this.units = 0});
+  _MoveQty({this.packages = 0, this.units = 0})
+      : casesCtrl = TextEditingController(text: packages > 0 ? "$packages" : ""),
+        unitsCtrl = TextEditingController(text: units > 0 ? "$units" : "");
+
   int packages;
   int units;
+  final TextEditingController casesCtrl;
+  final TextEditingController unitsCtrl;
 }

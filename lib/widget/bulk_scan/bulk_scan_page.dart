@@ -11,9 +11,7 @@ import "package:inventree/barcode/bulk_scan_handler.dart";
 import "package:inventree/barcode/tones.dart";
 
 import "package:inventree/widget/bulk_scan/bulk_scan_move_page.dart";
-import "package:inventree/widget/bulk_scan/bulk_receive_page.dart";
-import "package:inventree/widget/bulk_scan/bulk_scan_receive_page.dart";
-import "package:inventree/widget/bulk_scan/bulk_scan_reconcile_page.dart";
+import "package:inventree/widget/bulk_scan/bulk_scan_add_stock_page.dart";
 import "package:inventree/widget/bulk_scan/bulk_scan_pricing_page.dart";
 import "package:inventree/widget/barcode_link_sheet.dart";
 import "package:inventree/widget/snacks.dart";
@@ -293,6 +291,33 @@ class BulkScanPageState extends State<BulkScanPage> {
     return null;
   }
 
+  Future<void> _pickPartFromSearch() async {
+    final part = await showBarcodeLinkSheet(context, "");
+    if (part == null || !mounted) return;
+
+    final item = BulkScanItem(
+      id: _generateId(),
+      barcode: (part["IPN"] ?? "").toString(),
+      type: BulkScanItemType.part,
+      pk: part["pk"] as int,
+      partPk: part["pk"] as int,
+      partName: (part["name"] ?? "").toString(),
+      partIpn: (part["IPN"] ?? "").toString(),
+      location: "",
+      locationPk: null,
+      quantity: 1,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+    final added = scanState.addItem(item);
+    if (added) {
+      barcodeSuccessTone();
+      showSnackIcon("Added: ${item.partName}", success: true);
+    } else {
+      showSnackIcon("Already in list", success: false);
+    }
+    setState(() {});
+  }
+
   String _generateId() {
     final now = DateTime.now();
     return "${now.millisecondsSinceEpoch}_${now.microsecondsSinceEpoch % 1000000}";
@@ -305,13 +330,6 @@ class BulkScanPageState extends State<BulkScanPage> {
       // After scanner closes, refresh the UI
       if (mounted) setState(() {});
     }
-  }
-
-  void _navigateToBulkReceive() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const BulkReceivePage()),
-    );
   }
 
   void _navigateToMove() {
@@ -328,25 +346,16 @@ class BulkScanPageState extends State<BulkScanPage> {
     );
   }
 
-  void _navigateToReceive() {
+  void _navigateToAddStock() {
     final selected = scanState.getSelected();
     if (selected.isEmpty) {
       showSnackIcon(L10().bulkScanSelectItems, success: false);
       return;
     }
-    // Extract part ID from selected items
-    int? partId;
-    String partName = "";
-    for (final item in selected) {
-      if (item.partPk != null) {
-        partId = item.partPk;
-        partName = item.partName;
-        break;
-      }
-    }
-    if (partId == null) {
+    final hasPart = selected.any((item) => item.partPk != null);
+    if (!hasPart) {
       showSnackIcon(
-        "Select a scanned part or stock item to receive",
+        "Select a scanned part or stock item to add stock",
         success: false,
       );
       return;
@@ -354,43 +363,7 @@ class BulkScanPageState extends State<BulkScanPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => BulkScanReceivePage(
-          partId: partId!,
-          partName: partName,
-        ),
-      ),
-    );
-  }
-
-  void _navigateToReconcile() {
-    final selected = scanState.getSelected();
-    if (selected.isEmpty) {
-      showSnackIcon(L10().bulkScanSelectItems, success: false);
-      return;
-    }
-    int? partId;
-    String partName = "";
-    for (final item in selected) {
-      if (item.partPk != null) {
-        partId = item.partPk;
-        partName = item.partName;
-        break;
-      }
-    }
-    if (partId == null) {
-      showSnackIcon(
-        "Select a scanned part or stock item to reconcile",
-        success: false,
-      );
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BulkScanReconcilePage(
-          partId: partId!,
-          partName: partName,
-        ),
+        builder: (context) => BulkScanAddStockPage(selectedItems: selected),
       ),
     );
   }
@@ -474,6 +447,11 @@ class BulkScanPageState extends State<BulkScanPage> {
                         vertical: 10,
                       ),
                       isDense: true,
+                      suffixIcon: IconButton(
+                        icon: const Icon(TablerIcons.search, size: 20),
+                        tooltip: "Search for a part",
+                        onPressed: _pickPartFromSearch,
+                      ),
                     ),
                     onSubmitted: (value) => _addBarcode(value),
                   ),
@@ -522,18 +500,8 @@ class BulkScanPageState extends State<BulkScanPage> {
                 ),
                 ActionChip(
                   avatar: const Icon(TablerIcons.package_import, size: 18),
-                  label: const Text("Bulk Receive"),
-                  onPressed: _navigateToBulkReceive,
-                ),
-                ActionChip(
-                  avatar: const Icon(TablerIcons.package_import, size: 18),
-                  label: Text(L10().bulkScanReceiveStock),
-                  onPressed: hasSelection ? _navigateToReceive : null,
-                ),
-                ActionChip(
-                  avatar: const Icon(TablerIcons.scale, size: 18),
-                  label: Text(L10().bulkScanReconcileStock),
-                  onPressed: hasSelection ? _navigateToReconcile : null,
+                  label: const Text("Add Stock"),
+                  onPressed: hasSelection ? _navigateToAddStock : null,
                 ),
                 if (hasSelection)
                   ActionChip(

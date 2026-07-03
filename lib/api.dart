@@ -872,6 +872,7 @@ class InvenTreeAPI {
     String url, {
     Map<String, dynamic> body = const {},
     int? expectedStatusCode,
+    int timeoutSeconds = 10,
   }) async {
     Map<String, dynamic> _body = body;
 
@@ -890,6 +891,7 @@ class InvenTreeAPI {
       request,
       data: json.encode(_body),
       statusCode: expectedStatusCode,
+      timeoutSeconds: timeoutSeconds,
     );
   }
 
@@ -1110,6 +1112,7 @@ class InvenTreeAPI {
   Future<APIResponse> options(
     String url, {
     Map<String, String> params = const {},
+    int timeoutSeconds = 10,
   }) async {
     HttpClientRequest? request = await apiRequest(
       url,
@@ -1122,7 +1125,7 @@ class InvenTreeAPI {
       return APIResponse(url: url, method: "OPTIONS");
     }
 
-    return completeRequest(request);
+    return completeRequest(request, timeoutSeconds: timeoutSeconds);
   }
 
   /*
@@ -1133,6 +1136,7 @@ class InvenTreeAPI {
     String url, {
     Map<String, dynamic> body = const {},
     int? expectedStatusCode = 201,
+    int timeoutSeconds = 10,
   }) async {
     HttpClientRequest? request = await apiRequest(url, "POST");
 
@@ -1145,6 +1149,7 @@ class InvenTreeAPI {
       request,
       data: json.encode(body),
       statusCode: expectedStatusCode,
+      timeoutSeconds: timeoutSeconds,
     );
   }
 
@@ -1320,6 +1325,7 @@ class InvenTreeAPI {
     String? data,
     int? statusCode,
     bool ignoreResponse = false,
+    int timeoutSeconds = 10,
   }) async {
     if (data != null && data.isNotEmpty) {
       var encoded_data = utf8.encode(data);
@@ -1340,7 +1346,7 @@ class InvenTreeAPI {
 
     try {
       HttpClientResponse? _response = await request.close().timeout(
-        Duration(seconds: 10),
+        Duration(seconds: timeoutSeconds),
       );
 
       response.statusCode = _response.statusCode;
@@ -1462,6 +1468,7 @@ class InvenTreeAPI {
     Map<String, String> params = const {},
     Map<String, String> headers = const {},
     int? expectedStatusCode = 200,
+    int timeoutSeconds = 10,
   }) async {
     HttpClientRequest? request = await apiRequest(
       url,
@@ -1479,7 +1486,7 @@ class InvenTreeAPI {
       );
     }
 
-    return completeRequest(request);
+    return completeRequest(request, timeoutSeconds: timeoutSeconds);
   }
 
   /*

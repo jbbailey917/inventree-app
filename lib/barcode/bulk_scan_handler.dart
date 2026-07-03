@@ -160,10 +160,12 @@ class BulkScanState {
   /// Add an item to the list, checking for duplicates.
   /// Returns true if the item was added, false if it's a duplicate.
   bool addItem(BulkScanItem item) {
-    // Check for duplicates by barcode + type
-    final dup = items.any(
-      (i) => i.barcode == item.barcode && i.type == item.type,
-    );
+    // Check for duplicates: same barcode+type, or same part across scan types
+    final dup = items.any((i) {
+      if (i.barcode == item.barcode && i.type == item.type) return true;
+      if (item.partPk != null && i.partPk == item.partPk) return true;
+      return false;
+    });
     if (dup) return false;
 
     items.add(item);

@@ -63,7 +63,7 @@ class BulkReceivePageState extends State<BulkReceivePage> {
     try {
       final results = await Future.wait([
         _fetchAll("order/po/", {"outstanding": "true", "supplier_detail": "true"}),
-        _fetchAll("stock/location/", {}),
+        _fetchLocations(),
       ]);
 
       final pos = results[0];
@@ -84,7 +84,8 @@ class BulkReceivePageState extends State<BulkReceivePage> {
     Map<String, String> params,
   ) async {
     final all = <Map<String, dynamic>>[];
-    String? nextUrl = "$endpoint?${_encodeParams(params)}";
+    final query = _encodeParams(params);
+    String? nextUrl = query.isNotEmpty ? "$endpoint?$query" : endpoint;
 
     while (nextUrl != null) {
       final url = nextUrl.startsWith("/api/") ? nextUrl.substring(4) : nextUrl;
@@ -131,6 +132,15 @@ class BulkReceivePageState extends State<BulkReceivePage> {
     return params.entries
         .map((e) => "${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}")
         .join("&");
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchLocations() async {
+    // Always pass params to get paginated dict format across all InvenTree versions
+    return _fetchAll("stock/location/", {
+      "structural": "false",
+      "external": "false",
+      "limit": "500",
+    });
   }
 
   bool get _selectedPoIsPlaced {
@@ -352,7 +362,7 @@ class BulkReceivePageState extends State<BulkReceivePage> {
             lineItem = lines.first as Map<String, dynamic>;
             final spd = lineItem?["supplier_part_detail"] as Map<String, dynamic>?;
             if (spd != null) {
-              packSize = (spd["pack_quantity_native"] ?? spd["pack_quantity"] ?? 1)
+              packSize = ((spd["pack_quantity_native"] ?? spd["pack_quantity"] ?? 1) as num)
                   .toDouble();
               if (packSize <= 0) packSize = 1;
             }
@@ -387,6 +397,10 @@ class BulkReceivePageState extends State<BulkReceivePage> {
   Future<void> _submit() async {
     if (_selectedPoPk == null || !_selectedPoIsPlaced) {
       showSnackIcon("Select a placed purchase order", success: false);
+      return;
+    }
+    if (_activeDestPk == null) {
+      showSnackIcon("Select a destination location first", success: false);
       return;
     }
     if (_accum.isEmpty) {
